@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Control de Inventario y Ventas</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;background:#f5f5f5;color:#1a1a1a}
+.app{max-width:900px;margin:0 auto;padding:1rem}
+.tabs{display:flex;gap:4px;border-bottom:1px solid #ddd;margin-bottom:1.5rem;flex-wrap:wrap}
+.tab{padding:8px 16px;font-size:13px;border:none;background:transparent;color:#666;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;border-radius:0}
+.tab.active{color:#185FA5;border-bottom-color:#185FA5;font-weight:500}
+.tab:hover:not(.active){color:#1a1a1a}
+.panel{display:none}.panel.active{display:block}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:1rem 1.25rem}
+.metric{background:#f5f5f5;border-radius:8px;padding:1rem;text-align:center}
+.metric-label{font-size:12px;color:#666;margin-bottom:4px}
+.metric-val{font-size:22px;font-weight:500}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:13px;color:#666;margin-bottom:4px}
+input,select{width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:8px;font-size:14px;background:#fff;color:#1a1a1a}
+input:focus,select:focus{outline:2px solid #185FA5;outline-offset:1px;border-color:#185FA5}
+input[readonly]{background:#f5f5f5}
+.btn{padding:8px 16px;border:1px solid #ccc;border-radius:8px;font-size:13px;cursor:pointer;background:transparent;color:#1a1a1a;font-family:Arial,sans-serif}
+.btn:hover{background:#f0f0f0}
+.btn-primary{background:#185FA5;color:#fff;border-color:#185FA5}
+.btn-primary:hover{background:#0C447C}
+.btn-danger{color:#A32D2D;border-color:#A32D2D}
+.btn-danger:hover{background:#FCEBEB}
+.btn-sm{padding:4px 10px;font-size:12px}
+.btn-green{background:#3B6D11;color:#fff;border-color:#3B6D11}
+.btn-green:hover{background:#27500A}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 10px;font-weight:500;font-size:12px;color:#666;border-bottom:1px solid #eee;background:#fafafa}
+td{padding:8px 10px;border-bottom:1px solid #f0f0f0}
+tr:last-child td{border-bottom:none}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.badge-green{background:#EAF3DE;color:#3B6D11}
+.badge-red{background:#FCEBEB;color:#A32D2D}
+.badge-amber{background:#FAEEDA;color:#854F0B}
+.divider{border:none;border-top:1px solid #eee;margin:1rem 0}
+.section-title{font-size:14px;font-weight:500;margin-bottom:12px}
+.empty-state{text-align:center;padding:2rem;color:#999;font-size:14px}
+.stock-low{color:#854F0B}
+.stock-ok{color:#3B6D11}
+.user-bar{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;padding:10px 14px;background:#f5f5f5;border-radius:8px;border:1px solid #e0e0e0}
+.date-nav{display:flex;align-items:center;gap:8px;margin-bottom:1rem;flex-wrap:wrap}
+.report-date{font-size:14px;font-weight:500}
+.separator{margin:1.5rem 0 1rem;border-top:1px solid #eee}
+.app-header{text-align:center;margin-bottom:1.5rem;padding:1.5rem;background:#fff;border-radius:12px;border:1px solid #e0e0e0}
+.app-header h1{font-size:20px;font-weight:500;color:#185FA5}
+.app-header p{font-size:13px;color:#666;margin-top:4px}
+.ac-wrap{position:relative}
+.ac-list{display:none;position:absolute;top:calc(100% + 2px);left:0;right:0;background:#fff;border:1px solid #185FA5;border-radius:8px;z-index:9999;max-height:220px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.12)}
+.ac-item{padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f0f0f0}
+.ac-item:last-child{border-bottom:none}
+.ac-item.active,.ac-item:hover{background:#f0f6ff}
+.inp-ok{border-color:#3B6D11 !important;background:#f6fff0 !important}
+
+/* ── SYNC BAR mejorada ── */
+.sync-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;padding:6px 12px;border-radius:8px;background:#fff;border:1px solid #e0e0e0;font-size:12px}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#ccc;flex-shrink:0;transition:background .3s}
+.sync-dot.ok{background:#3B6D11}
+.sync-dot.syncing{background:#185FA5;animation:pulse 1s infinite}
+.sync-dot.error{background:#A32D2D}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-text{flex:1;color:#666}
+.sync-timer{font-size:11px;color:#999}
+
+/* ── Spinner de carga del reporte ── */
+.loading-overlay{text-align:center;padding:2rem;color:#666;font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="app-header">
+    <h1>Control de Inventario y Ventas</h1>
+    <p>Sistema multiusuario en la nube</p>
+  </div>
+
+  <div id="login-view" style="max-width:360px;margin:2rem auto">
+    <div class="card">
+      <p class="section-title" style="font-size:16px;margin-bottom:4px">Iniciar sesión</p>
+      <p style="font-size:13px;color:#666;margin-bottom:1.5rem">Ingresa tu nombre para comenzar</p>
+      <div class="form-group">
+        <label>Tu nombre</label>
+        <input type="text" id="login-name" placeholder="Ej: María García" onkeydown="if(event.key==='Enter')doLogin()" />
+      </div>
+      <div class="form-group">
+        <label>Rol</label>
+        <select id="login-role">
+          <option value="vendedor">Vendedor</option>
+          <option value="admin">Administrador</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="doLogin()">Entrar al sistema</button>
+      <div id="login-alert" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <div id="main-view" style="display:none">
+
+    <!-- ── BARRA DE SINCRONIZACIÓN MEJORADA ── -->
+    <div class="sync-bar">
+      <div class="sync-dot" id="sync-dot"></div>
+      <span class="sync-text" id="sync-status">Iniciando...</span>
+      <span class="sync-timer" id="sync-timer"></span>
+      <button class="btn btn-sm" onclick="sincronizarTodo(true)" style="font-size:11px;padding:3px 8px">↻ Sync ahora</button>
+    </div>
+
+    <div class="user-bar">
+      <div>
+        <span style="font-size:13px;color:#666">Usuario: </span>
+        <span style="font-weight:500" id="display-name">—</span>
+        <span id="display-role" class="badge badge-green" style="margin-left:8px"></span>
+      </div>
+      <button class="btn btn-sm" onclick="logout()">Cambiar usuario</button>
+    </div>
+
+    <div class="tabs">
+      <button class="tab active" id="tab-ventas" onclick="showTab('ventas')">Registrar Venta</button>
+      <button class="tab" id="tab-inventario" onclick="showTab('inventario')">Inventario</button>
+      <button class="tab" id="tab-reporte" onclick="showTab('reporte')">Reporte Diario</button>
+      <button class="tab" id="tab-admin" onclick="showTab('admin')" style="display:none">Administrar</button>
+    </div>
+
+    <div class="panel active" id="panel-ventas">
+      <div class="grid-2" style="margin-bottom:1.5rem">
+        <div class="metric"><div class="metric-label">Mis ventas hoy</div><div class="metric-val" id="m-ventas-hoy">0</div></div>
+        <div class="metric"><div class="metric-label">Total vendido hoy</div><div class="metric-val" id="m-total-hoy">Bs 0</div></div>
+      </div>
+      <div class="card">
+        <p class="section-title">Nueva venta</p>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Producto <span id="prod-ok" style="color:#3B6D11;font-size:11px"></span></label>
+            <div class="ac-wrap">
+              <input type="text" id="inp-producto" placeholder="Escribe el nombre..." autocomplete="off" />
+              <div class="ac-list" id="ac-list"></div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Cantidad</label>
+            <input type="number" id="venta-cantidad" value="1" min="1" oninput="calcTotal()" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Precio unitario (Bs)</label>
+            <input type="number" id="venta-precio" placeholder="0.00" oninput="calcTotal()" />
+          </div>
+          <div class="form-group">
+            <label>Total (Bs)</label>
+            <input type="number" id="venta-total" placeholder="0.00" readonly />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Observación (opcional)</label>
+          <input type="text" id="venta-obs" placeholder="Cliente, número de pedido, etc." />
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="registrarVenta()">Registrar venta</button>
+          <span id="venta-alert"></span>
+        </div>
+      </div>
+      <div class="separator"></div>
+      <p class="section-title">Mis ventas de hoy</p>
+      <div id="mis-ventas-list"></div>
+    </div>
+
+    <div class="panel" id="panel-inventario">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+          <p class="section-title" style="margin:0">Stock actual</p>
+          <button class="btn btn-sm" onclick="loadInventario()">Actualizar</button>
+        </div>
+        <div id="inventario-table"><p style="color:#999;font-size:13px;padding:1rem 0">Cargando...</p></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-reporte">
+      <div class="date-nav">
+        <button class="btn btn-sm" onclick="changeDay(-1)">← Anterior</button>
+        <span class="report-date" id="report-date-label"></span>
+        <button class="btn btn-sm" onclick="changeDay(1)">Siguiente →</button>
+        <button class="btn btn-sm btn-primary" onclick="sincronizarTodo(true).then(function(){ loadReporte(); })">↻ Sincronizar y recargar</button>
+        <button class="btn btn-sm btn-green" onclick="exportarExcel()" style="margin-left:auto">Exportar Excel (CSV)</button>
+      </div>
+      <div class="grid-3" style="margin-bottom:1.5rem">
+        <div class="metric"><div class="metric-label">Total ventas</div><div class="metric-val" id="r-total-ventas">0</div></div>
+        <div class="metric"><div class="metric-label">Ingresos (Bs)</div><div class="metric-val" id="r-ingresos">0</div></div>
+        <div class="metric"><div class="metric-label">Vendedores activos</div><div class="metric-val" id="r-vendedores">0</div></div>
+      </div>
+      <div class="card" style="margin-bottom:1rem">
+        <p class="section-title">Ventas por empleado</p>
+        <div id="r-por-empleado"></div>
+      </div>
+      <div class="card">
+        <p class="section-title">Detalle de ventas</p>
+        <div id="r-detalle"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-admin">
+      <div class="card" style="margin-bottom:1rem">
+        <p class="section-title">Agregar producto</p>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Nombre del producto</label>
+            <input type="text" id="prod-nombre" placeholder="Ej: Coca-Cola 2L" />
+          </div>
+          <div class="form-group">
+            <label>Precio sugerido (Bs)</label>
+            <input type="number" id="prod-precio" placeholder="0.00" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Stock inicial</label>
+            <input type="number" id="prod-stock" placeholder="0" />
+          </div>
+          <div class="form-group">
+            <label>Categoría</label>
+            <input type="text" id="prod-cat" placeholder="Ej: Bebidas" />
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="agregarProducto()">Agregar producto</button>
+          <span id="prod-alert"></span>
+        </div>
+      </div>
+      <div class="card">
+        <p class="section-title">Gestionar productos</p>
+        <div id="admin-products-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="position:fixed;bottom:10px;right:10px;z-index:9999;">
+  <button onclick="limpiarMemoriaLocal()" style="background:#A32D2D;color:#fff;border:none;padding:8px 12px;border-radius:4px;font-size:12px;cursor:pointer;">
+    🗑️ Borrar datos locales
+  </button>
+</div>
+
+<script>
+// Función para borrar todos los datos locales (ventas e inventario)
+function limpiarMemoriaLocal() {
+  if (!confirm("¿Estás seguro de borrar TODOS los datos locales?\n\nEsto eliminará:\n- Todas las ventas guardadas\n- El inventario local\n\nLos datos en la nube NO se afectarán.")) {
+    return;
+  }
+  
+  // Borrar todas las claves de ventas
+  var keys = Object.keys(localStorage);
+  keys.forEach(function(key) {
+    if (key.startsWith('inv_v_') || key === 'inv_p') {
+      localStorage.removeItem(key);
+    }
+  });
+  
+  alert("✅ Datos locales borrados correctamente.\n\nRecarga la página para ver cambios.");
+  location.reload();
+}
+</script>
+
+<script>
+
+  
+// ════════════════════════════════════════════════════════════════
+//  CONFIGURACIÓN
+// ════════════════════════════════════════════════════════════════
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxA6R6k-epNSivHVcP5xcP2fLMf6ZMwwlPcas4Jrw3l_NOQw0ryNDiAr61aREUqvRxorw/exec";
+const SYNC_INTERVAL_MS = 15000; // Sincronizar cada 15 segundos
+
+var currentUser = null, currentRole = null, reportDayOffset = 0;
+var prodSel = null, acIdx = -1;
+var syncInterval = null;
+var lastSyncTime = null;
+var isSyncing = false;
+
+// ════════════════════════════════════════════════════════════════
+//  UTILIDADES DE FECHA
+// ════════════════════════════════════════════════════════════════
+function hoyKey() {
+  var d = new Date();
+  var offset = d.getTimezoneOffset() * 60000;
+  var local = new Date(d.getTime() - offset);
+  return local.toISOString().slice(0, 10);
+}
+
+function dayKey() {
+  var d = new Date();
+  d.setDate(d.getDate() + reportDayOffset);
+  var offset = d.getTimezoneOffset() * 60000;
+  var local = new Date(d.getTime() - offset);
+  return local.toISOString().slice(0, 10);
+}
+
+function fmtDate(k) {
+  var p = k.split('-');
+  return p[2] + '/' + p[1] + '/' + p[0];
+}
+
+function fmtTime(ts) {
+  return new Date(ts).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  STORAGE HELPERS
+// ════════════════════════════════════════════════════════════════
+function getProds() { try { return JSON.parse(localStorage.getItem('inv_p') || '[]'); } catch (e) { return []; } }
+function setProds(a) { localStorage.setItem('inv_p', JSON.stringify(a)); }
+function getVentas(d) { try { return JSON.parse(localStorage.getItem('inv_v_' + d) || '[]'); } catch (e) { return []; } }
+function setLocal(d, a) { localStorage.setItem('inv_v_' + d, JSON.stringify(a)); }
+
+// ════════════════════════════════════════════════════════════════
+//  SINCRONIZACIÓN — NÚCLEO CORREGIDO
+// ════════════════════════════════════════════════════════════════
+
+/** Combina dos arrays de ventas sin duplicar por ID. La nube tiene prioridad. */
+function combinarVentas(locales, nube) {
+  var mapa = {};
+  locales.forEach(function (v) { mapa[v.id] = v; });
+  nube.forEach(function (v) { mapa[v.id] = v; }); // nube pisa locales
+  return Object.values(mapa).sort(function (a, b) { return a.ts > b.ts ? 1 : -1; });
+}
+
+/** Sube las ventas de un día a la nube (fire-and-forget) */
+async function postVentas(dia, ventas) {
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: JSON.stringify({ fecha: dia, datos: JSON.stringify(ventas) })
+    });
+  } catch (e) {
+    // Error silencioso — ya guardó en local
+  }
+}
+
+/** Guarda ventas en local Y sube a la nube */
+function setVentas(d, a) {
+  setLocal(d, a);
+  postVentas(d, a);
+}
+
+/** Indicador visual del estado de sincronización */
+function setSyncStatus(estado, texto) {
+  var dot = document.getElementById('sync-dot');
+  var label = document.getElementById('sync-status');
+  if (!dot || !label) return;
+  dot.className = 'sync-dot ' + estado; // ok | syncing | error
+  label.textContent = texto;
+}
+
+function updateSyncTimer() {
+  var el = document.getElementById('sync-timer');
+  if (!el) return;
+  if (!lastSyncTime) { el.textContent = ''; return; }
+  var seg = Math.round((Date.now() - lastSyncTime) / 1000);
+  el.textContent = 'hace ' + seg + 's';
+}
+/**
+ * FUNCIÓN PRINCIPAL DE SINCRONIZACIÓN — VERSIÓN FINAL CORREGIDA
+ *
+ * 1. Descarga TODO el contenido de la nube (todas las fechas) usando GET.
+ * 2. Combina con lo que hay en localStorage.
+ * 3. Guarda el resultado combinado en localStorage.
+ * 4. Refresca las vistas activas.
+ *
+ * @param {boolean} showLoading  Si true, muestra "Sincronizando..." mientras trabaja.
+ */
+async function sincronizarTodo(showLoading) {
+  if (isSyncing) return; // Evitar llamadas paralelas
+  isSyncing = true;
+
+  if (showLoading) setSyncStatus('syncing', 'Sincronizando con la nube...');
+
+  try {
+    // ── 1. Descargar datos de la nube usando GET (llama a doGet) ───────────────────
+    // NO se necesita ningún parámetro. La petición GET por defecto activa doGet()
+    var response = await fetch(SCRIPT_URL + '?ts=' + Date.now());
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    var allData = await response.json(); // Recibe el objeto { "fecha": "JSON string", ... }
+
+    // ── 2. Combinar fecha por fecha ────────────────────────────────────────
+    for (var fecha in allData) {
+      var ventasNube = [];
+      try { 
+        // El valor de la celda es un string, por eso debe ser parseado otra vez
+        ventasNube = JSON.parse(allData[fecha]); 
+      } catch (e) { 
+        ventasNube = []; 
+      }
+      if (!Array.isArray(ventasNube)) ventasNube = [];
+
+      var ventasLocales = getVentas(fecha);
+      var combinadas = combinarVentas(ventasLocales, ventasNube);
+
+      // Guardar combinado en localStorage
+      setLocal(fecha, combinadas);
+    }
+
+    // ── 3. Verificar si hay ventas locales de hoy que no están en la nube ──
+    //    Si el día de hoy no estaba en allData, subir las locales
+    var hoy = hoyKey();
+    if (!allData[hoy]) {
+      var ventasLocalesHoy = getVentas(hoy);
+      if (ventasLocalesHoy.length > 0) {
+        postVentas(hoy, ventasLocalesHoy);
+      }
+    }
+
+    lastSyncTime = Date.now();
+    setSyncStatus('ok', 'Sincronizado — ' + Object.keys(allData).length + ' días en la nube');
+
+    // ── 4. Refrescar vistas activas ────────────────────────────────────────
+    var panelVentas = document.getElementById('panel-ventas');
+    var panelReporte = document.getElementById('panel-reporte');
+    if (panelVentas && panelVentas.classList.contains('active')) {
+      loadMisVentas();
+      updateMetrics();
+    }
+    if (panelReporte && panelReporte.classList.contains('active')) {
+      loadReporte();
+    }
+
+  } catch (e) {
+    console.error('Sync error:', e);
+    setSyncStatus('error', 'Sin conexión — datos guardados localmente');
+  } finally {
+    isSyncing = false;
+  }
+}
+// ════════════════════════════════════════════════════════════════
+//  LOGIN / LOGOUT
+// ════════════════════════════════════════════════════════════════
+function doLogin() {
+  var n = document.getElementById('login-name').value.trim();
+  var r = document.getElementById('login-role').value;
+  if (!n) { alerta('login-alert', 'Ingresa tu nombre', 'error'); return; }
+
+  currentUser = n;
+  currentRole = r;
+  document.getElementById('display-name').textContent = n;
+  document.getElementById('display-role').textContent = r;
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('main-view').style.display = 'block';
+  if (r === 'admin') document.getElementById('tab-admin').style.display = '';
+
+  // Primera sincronización al entrar
+  sincronizarTodo(true);
+
+  // Sincronización automática cada 15 segundos
+  syncInterval = setInterval(function () {
+    sincronizarTodo(false);
+    updateSyncTimer();
+  }, SYNC_INTERVAL_MS);
+
+  // Actualizar el contador del timer cada segundo
+  setInterval(updateSyncTimer, 1000);
+}
+
+function logout() {
+  if (syncInterval) clearInterval(syncInterval);
+  location.reload();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  NAVEGACIÓN DE PESTAÑAS
+// ════════════════════════════════════════════════════════════════
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+  document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+  document.getElementById('panel-' + name).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+
+  if (name === 'inventario') loadInventario();
+  if (name === 'reporte') {
+    reportDayOffset = 0;
+    // Mostrar spinner mientras sincroniza
+    document.getElementById('r-detalle').innerHTML = '<div class="loading-overlay">⏳ Descargando datos de la nube...</div>';
+    document.getElementById('r-por-empleado').innerHTML = '';
+    sincronizarTodo(true).then(function () { loadReporte(); });
+  }
+  if (name === 'ventas') { loadMisVentas(); updateMetrics(); }
+  if (name === 'admin') loadAdminProds();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ALERTAS
+// ════════════════════════════════════════════════════════════════
+function alerta(id, msg, tipo) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = '<span class="badge ' + (tipo === 'error' ? 'badge-red' : 'badge-green') + '" style="font-size:12px">' + msg + '</span>';
+  setTimeout(function () { el.innerHTML = ''; }, 3500);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  AUTOCOMPLETADO DE PRODUCTOS
+// ════════════════════════════════════════════════════════════════
+var inpProd = null, acList = null;
+window.addEventListener('DOMContentLoaded', function () {
+  inpProd = document.getElementById('inp-producto');
+  acList = document.getElementById('ac-list');
+
+  inpProd.addEventListener('input', function () {
+    prodSel = null;
+    inpProd.classList.remove('inp-ok');
+    document.getElementById('prod-ok').textContent = '';
+    acIdx = -1;
+    var txt = inpProd.value.trim().toLowerCase();
+    if (!txt) { acList.style.display = 'none'; return; }
+    var prods = getProds().filter(function (p) { return p.nombre.toLowerCase().indexOf(txt) !== -1; });
+    if (!prods.length) { acList.style.display = 'none'; return; }
+    acList.innerHTML = prods.map(function (p) {
+      return '<div class="ac-item" data-id="' + p.id + '">' +
+        '<span style="font-weight:500">' + p.nombre + '</span>' +
+        '<span style="color:#666;margin-left:8px">Bs ' + parseFloat(p.precio).toFixed(2) + '</span>' +
+        '<span style="margin-left:8px;font-size:12px;color:' + (p.stock <= 5 ? '#854F0B' : '#3B6D11') + '">Stock: ' + p.stock + '</span>' +
+        '</div>';
+    }).join('');
+    acList.style.display = 'block';
+  });
+
+  acList.addEventListener('mousedown', function (e) {
+    e.preventDefault();
+    var item = e.target.closest('.ac-item');
+    if (item) elegir(item.dataset.id);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!acList.contains(e.target) && e.target !== inpProd) acList.style.display = 'none';
+  });
+});
+
+function elegir(id) {
+  var p = getProds().find(function (x) { return x.id === id; });
+  if (!p) return;
+  prodSel = p;
+  inpProd.value = p.nombre;
+  inpProd.classList.add('inp-ok');
+  document.getElementById('prod-ok').textContent = '✓ listo';
+  acList.style.display = 'none';
+  document.getElementById('venta-precio').value = parseFloat(p.precio).toFixed(2);
+  calcTotal();
+  document.getElementById('venta-cantidad').focus();
+}
+
+function calcTotal() {
+  var q = parseFloat(document.getElementById('venta-cantidad').value) || 0;
+  var pr = parseFloat(document.getElementById('venta-precio').value) || 0;
+  document.getElementById('venta-total').value = (q * pr).toFixed(2);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  REGISTRAR VENTA
+// ════════════════════════════════════════════════════════════════
+function registrarVenta() {
+  var nombreEscrito = document.getElementById('inp-producto').value.trim();
+  var qty = parseInt(document.getElementById('venta-cantidad').value) || 0;
+  var prec = parseFloat(document.getElementById('venta-precio').value) || 0;
+  var obs = document.getElementById('venta-obs').value.trim();
+
+  if (!nombreEscrito) { alerta('venta-alert', 'Escribe el nombre del producto', 'error'); return; }
+  if (qty < 1) { alerta('venta-alert', 'Cantidad inválida', 'error'); return; }
+  if (prec <= 0) { alerta('venta-alert', 'Precio inválido', 'error'); return; }
+
+  var prods = getProds();
+  var prod = prods.find(function (p) { return p.nombre.toLowerCase() === nombreEscrito.toLowerCase(); });
+  if (!prod) {
+    prod = { id: "P-" + Date.now(), nombre: nombreEscrito, precio: prec, stock: 1000, categoria: 'General' };
+    prods.push(prod);
+  }
+  prod.stock -= qty;
+  setProds(prods);
+
+  var diaActual = hoyKey();
+  var ventas = getVentas(diaActual);
+  ventas.push({
+    id: Date.now().toString(),
+    ts: new Date().toISOString(),
+    usuario: currentUser,
+    prodId: prod.id,
+    prodNombre: prod.nombre,
+    qty: qty,
+    precio: prec,
+    total: qty * prec,
+    obs: obs
+  });
+  setVentas(diaActual, ventas);
+
+  alerta('venta-alert', 'Venta guardada ✓', 'success');
+
+  document.getElementById('inp-producto').value = '';
+  document.getElementById('inp-producto').classList.remove('inp-ok');
+  document.getElementById('prod-ok').textContent = '';
+  document.getElementById('venta-cantidad').value = '1';
+  document.getElementById('venta-precio').value = '';
+  document.getElementById('venta-total').value = '';
+  document.getElementById('venta-obs').value = '';
+  loadMisVentas();
+  updateMetrics();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  MIS VENTAS
+// ════════════════════════════════════════════════════════════════
+function loadMisVentas() {
+  var v = getVentas(hoyKey()).filter(function (x) { return x.usuario === currentUser; }).reverse();
+  var el = document.getElementById('mis-ventas-list');
+  if (!v.length) { el.innerHTML = '<div class="empty-state">No has registrado ventas hoy</div>'; return; }
+  el.innerHTML = '<table><thead><tr><th>Hora</th><th>Producto</th><th>Total</th><th>Acción</th></tr></thead><tbody>' +
+    v.map(function (x) {
+      return '<tr><td>' + fmtTime(x.ts) + '</td>' +
+        '<td>' + x.prodNombre + '</td>' +
+        '<td>Bs ' + x.total.toFixed(2) + '</td>' +
+        '<td><button class="btn btn-sm btn-danger" onclick="eliminarRegistro(\'' + x.id + '\')">Eliminar</button></td></tr>';
+    }).join('') + '</tbody></table>';
+}
+
+function eliminarRegistro(id) {
+  var dia = hoyKey();
+  var ventas = getVentas(dia).filter(function (x) { return x.id !== id; });
+  setVentas(dia, ventas);
+  loadMisVentas();
+  updateMetrics();
+}
+
+function updateMetrics() {
+  var v = getVentas(hoyKey()).filter(function (x) { return x.usuario === currentUser; });
+  document.getElementById('m-ventas-hoy').textContent = v.length;
+  document.getElementById('m-total-hoy').textContent = 'Bs ' + v.reduce(function (a, x) { return a + x.total; }, 0).toFixed(2);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  REPORTE DIARIO — CORREGIDO: Siempre lee de localStorage
+//  (que ya fue actualizado por sincronizarTodo)
+// ════════════════════════════════════════════════════════════════
+function loadReporte() {
+  var day = dayKey();
+  document.getElementById('report-date-label').textContent = fmtDate(day);
+  var v = getVentas(day);
+
+  document.getElementById('r-total-ventas').textContent = v.length;
+  var ing = v.reduce(function (a, x) { return a + x.total; }, 0);
+  document.getElementById('r-ingresos').textContent = 'Bs ' + ing.toFixed(2);
+
+  var vendedores = [];
+  v.forEach(function (x) { if (vendedores.indexOf(x.usuario) === -1) vendedores.push(x.usuario); });
+  document.getElementById('r-vendedores').textContent = vendedores.length;
+
+  var empEl = document.getElementById('r-por-empleado');
+  if (!vendedores.length) {
+    empEl.innerHTML = '<div class="empty-state">Sin ventas este día</div>';
+  } else {
+    empEl.innerHTML = '<table><thead><tr><th>Vendedor</th><th>Ventas</th><th>Total (Bs)</th></tr></thead><tbody>' +
+      vendedores.map(function (u) {
+        var uv = v.filter(function (x) { return x.usuario === u; });
+        var ut = uv.reduce(function (a, x) { return a + x.total; }, 0);
+        return '<tr><td>' + u + '</td><td>' + uv.length + '</td><td>Bs ' + ut.toFixed(2) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+
+  var detEl = document.getElementById('r-detalle');
+  if (!v.length) {
+    detEl.innerHTML = '<div class="empty-state">Sin ventas este día</div>';
+  } else {
+    detEl.innerHTML = '<table><thead><tr><th>Hora</th><th>Vendedor</th><th>Producto</th><th>Cant.</th><th>Total</th></tr></thead><tbody>' +
+      v.slice().reverse().map(function (x) {
+        return '<tr><td>' + fmtTime(x.ts) + '</td>' +
+          '<td>' + x.usuario + '</td><td>' + x.prodNombre + '</td><td>' + x.qty + '</td><td>Bs ' + x.total.toFixed(2) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+  }
+}
+
+function changeDay(d) {
+  reportDayOffset += d;
+  document.getElementById('r-detalle').innerHTML = '<div class="loading-overlay">⏳ Cargando...</div>';
+  sincronizarTodo(true).then(function () { loadReporte(); });
+}
+
+// ════════════════════════════════════════════════════════════════
+//  EXPORTAR CSV
+// ════════════════════════════════════════════════════════════════
+function exportarExcel() {
+  var day = dayKey();
+  var v = getVentas(day);
+  if (!v.length) { alert('No hay ventas para este día'); return; }
+  var csv = 'Hora;Vendedor;Producto;Cantidad;Precio;Total;Observacion\n';
+  v.forEach(function (x) {
+    var h = fmtTime(x.ts);
+    csv += h + ';' + x.usuario + ';' + x.prodNombre + ';' + x.qty + ';' + x.precio.toFixed(2) + ';' + x.total.toFixed(2) + ';' + (x.obs || '') + '\n';
+  });
+  var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'Reporte_' + day + '.csv'; a.click();
+}
+
+// ════════════════════════════════════════════════════════════════
+//  INVENTARIO
+// ════════════════════════════════════════════════════════════════
+function loadInventario() {
+  var p = getProds();
+  var el = document.getElementById('inventario-table');
+  if (!p.length) { el.innerHTML = '<div class="empty-state">No hay productos registrados</div>'; return; }
+  el.innerHTML = '<table><thead><tr><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th></tr></thead><tbody>' +
+    p.map(function (x) {
+      return '<tr><td>' + x.nombre + '</td><td>Bs ' + parseFloat(x.precio).toFixed(2) + '</td>' +
+        '<td class="' + (x.stock <= 5 ? 'stock-low' : 'stock-ok') + '">' + x.stock + '</td>' +
+        '<td>' + (x.categoria || '—') + '</td></tr>';
+    }).join('') + '</tbody></table>';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  ADMINISTRACIÓN DE PRODUCTOS
+// ════════════════════════════════════════════════════════════════
+function agregarProducto() {
+  var n = document.getElementById('prod-nombre').value.trim();
+  var pr = parseFloat(document.getElementById('prod-precio').value) || 0;
+  var st = parseInt(document.getElementById('prod-stock').value) || 0;
+  if (!n || pr <= 0) { alerta('prod-alert', 'Nombre y precio son obligatorios', 'error'); return; }
+  var prods = getProds();
+  prods.push({ id: "P-" + Date.now(), nombre: n, precio: pr, stock: st, categoria: document.getElementById('prod-cat').value });
+  setProds(prods);
+  document.getElementById('prod-nombre').value = '';
+  document.getElementById('prod-precio').value = '';
+  document.getElementById('prod-stock').value = '';
+  document.getElementById('prod-cat').value = '';
+  alerta('prod-alert', 'Producto agregado', 'success');
+  loadAdminProds();
+}
+
+function loadAdminProds() {
+  var p = getProds();
+  var el = document.getElementById('admin-products-list');
+  if (!p.length) { el.innerHTML = '<div class="empty-state">No hay productos</div>'; return; }
+  el.innerHTML = '<table><thead><tr><th>Producto</th><th>Precio</th><th>Stock</th><th>Categoría</th></tr></thead><tbody>' +
+    p.map(function (x) {
+      return '<tr><td>' + x.nombre + '</td><td>Bs ' + parseFloat(x.precio).toFixed(2) + '</td>' +
+        '<td>' + x.stock + '</td><td>' + (x.categoria || '—') + '</td></tr>';
+    }).join('') + '</tbody></table>';
+}
+</script>
+</body>
+</html>
