@@ -375,61 +375,67 @@ function updateSyncTimer() {
  * @param {boolean} showLoading  Si true, muestra "Sincronizando..." mientras trabaja.
  */
 async function sincronizarTodo(showLoading) {
-  if (isSyncing) return;
+  if (isSyncing) return; // Evitar llamadas paralelas
   isSyncing = true;
 
   if (showLoading) setSyncStatus('syncing', 'Sincronizando con la nube...');
 
   try {
-    // --- CAMBIO AQUÍ ---
-    // Usamos XMLHttpRequest en lugar de fetch para evitar problemas CORS en file://
-    var xhr = new XMLHttpRequest();
-    var url = SCRIPT_URL + '?ts=' + Date.now(); // Timestamp para evitar caché
-    
-    xhr.open("GET", url, true);
-    xhr.setRequestHeader("Content-Type", "application/json");
-    
-    // Forzamos el tipo de contenido (aunque ya lo manejamos en el backend)
-    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    // ── 1. Descargar datos de la nube usando GET (llama a doGet) ───────────────────
+    // NO se necesita ningún parámetro. La petición GET por defecto activa doGet()
+    var response = await fetch(SCRIPT_URL + '?ts=' + Date.now());
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    var allData = await response.json(); // Recibe el objeto { "fecha": "JSON string", ... }
 
-    xhr.onload = function() {
-      if (xhr.status === 200) {
-        try {
-          var allData = JSON.parse(xhr.responseText);
-          procesarDatosNube(allData); // Llamamos a una función para procesar los datos
-          setSyncStatus('ok', 'Sincronizado - ' + Object.keys(allData).length + ' días');
-        } catch (e) {
-          console.error("Error parseando datos:", e);
-          setSyncStatus('error', 'Error en formato de datos');
-        }
-      } else {
-        console.error("Error HTTP:", xhr.status, xhr.responseText);
-        setSyncStatus('error', 'Error de servidor (' + xhr.status + ')');
+    // ── 2. Combinar fecha por fecha ────────────────────────────────────────
+    for (var fecha in allData) {
+      var ventasNube = [];
+      try { 
+        // El valor de la celda es un string, por eso debe ser parseado otra vez
+        ventasNube = JSON.parse(allData[fecha]); 
+      } catch (e) { 
+        ventasNube = []; 
       }
-    };
+      if (!Array.isArray(ventasNube)) ventasNube = [];
 
-    xhr.onerror = function() {
-      console.error("Error de red o CORS");
-      setSyncStatus('error', 'Sin conexión o bloqueo CORS');
-    };
+      var ventasLocales = getVentas(fecha);
+      var combinadas = combinarVentas(ventasLocales, ventasNube);
 
-    xhr.ontimeout = function() {
-      console.error("Tiempo de espera agotado");
-      setSyncStatus('error', 'Tiempo de espera agotado');
-    };
+      // Guardar combinado en localStorage
+      setLocal(fecha, combinadas);
+    }
 
-    xhr.send();
+    // ── 3. Verificar si hay ventas locales de hoy que no están en la nube ──
+    //    Si el día de hoy no estaba en allData, subir las locales
+    var hoy = hoyKey();
+    if (!allData[hoy]) {
+      var ventasLocalesHoy = getVentas(hoy);
+      if (ventasLocalesHoy.length > 0) {
+        postVentas(hoy, ventasLocalesHoy);
+      }
+    }
 
-    // --- FIN DEL CAMBIO ---
+    lastSyncTime = Date.now();
+    setSyncStatus('ok', 'Sincronizado — ' + Object.keys(allData).length + ' días en la nube');
+
+    // ── 4. Refrescar vistas activas ────────────────────────────────────────
+    var panelVentas = document.getElementById('panel-ventas');
+    var panelReporte = document.getElementById('panel-reporte');
+    if (panelVentas && panelVentas.classList.contains('active')) {
+      loadMisVentas();
+      updateMetrics();
+    }
+    if (panelReporte && panelReporte.classList.contains('active')) {
+      loadReporte();
+    }
 
   } catch (e) {
     console.error('Sync error:', e);
-    setSyncStatus('error', 'Error de sincronización: ' + e.message);
+    setSyncStatus('error', 'Sin conexión — datos guardados localmente');
   } finally {
     isSyncing = false;
   }
 }
-
 // Función auxiliar que llamamos desde xhr.onload
 function procesarDatosNube(allData) {
   for (var fecha in allData) {
